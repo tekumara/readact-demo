@@ -1,0 +1,24 @@
+Comprehensive PII Test Document
+
+Personal Information:
+- Full Name: Jane Smith
+- Email Address: jane.smith@example.com
+- Phone Number: (555) 123-4567
+- Social Security Number: 123-45-6789
+- Date of Birth: 01/15/1980
+- Home Address: 123 Main Street, Apt 4B, Springfield, IL 62701
+
+Financial Information:
+- Credit Card: 4111 1111 1111 1111
+- Expiration Date: 12/25
+- Bank Account: 123456789
+- Routing Number: 987654321
+
+Online Presence:
+- Website: https://www.janesmith.com
+- IP Address: 192.168.1.1
+- Username: jsmith123
+
+Additional Contacts:
+- Emergency Contact: John Doe (123) 456-7890
+- Work Email: j.smith@company-example.org
