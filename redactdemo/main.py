@@ -15,6 +15,8 @@ def deidentify_with_generated_key(project_id: str, text: str) -> str:
         {"name": "EMAIL_ADDRESS"},
         {"name": "PHONE_NUMBER"},
         {"name": "CREDIT_CARD_NUMBER"},
+        {"name": "ORGANIZATION_NAME"},
+        {"name": "FINANCIAL_ACCOUNT_NUMBER"},
     ]
 
     # Configuration for the DLP API
@@ -25,6 +27,7 @@ def deidentify_with_generated_key(project_id: str, text: str) -> str:
     # Configure deterministic encryption transformation with DLP-generated key
     crypto_deterministic_config = {
         "crypto_key": {"transient": {"name": "dlp-generated-key"}},
+        # prefix for replacement tokens
         "surrogate_info_type": {"name": "TOKEN"},
     }
 
