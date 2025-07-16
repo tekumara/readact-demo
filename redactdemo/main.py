@@ -4,13 +4,9 @@ import os
 import google.cloud.dlp_v2
 
 
-def deidentify_aes_siv(project_id: str, text: str, key_name: str, wrapped_key_base64: str) -> str:
+def deidentify_with_generated_key(project_id: str, text: str) -> str:
     dlp = google.cloud.dlp_v2.DlpServiceClient()
     parent = f"projects/{project_id}/locations/global"
-
-    # The wrapped key is base64-encoded, but the library expects a binary
-    # string, so decode it here.
-    wrapped_key = base64.b64decode(wrapped_key_base64)
 
     # Specify the types of info to detect and transform
     info_types = [
@@ -25,21 +21,22 @@ def deidentify_aes_siv(project_id: str, text: str, key_name: str, wrapped_key_ba
         "info_types": info_types,
     }
 
-    # Configure AES-SIV encryption transformation
-    crypto_replace_ffx_fpe_config = {
+    # Configure deterministic encryption transformation with DLP-generated key
+    crypto_deterministic_config = {
         "crypto_key": {
-            "kms_wrapped": {
-                "wrapped_key": wrapped_key,
-                "crypto_key_name": key_name,
+            "transient": {
+                "name": "dlp-generated-key"
             }
         },
-        "alphabet": "ALPHA_NUMERIC",
+        "surrogate_info_type": {
+            "name": "TOKEN"
+        }
     }
 
     deidentify_config = {
         "info_type_transformations": {
             "transformations": [
-                {"primitive_transformation": {"crypto_replace_ffx_fpe_config": crypto_replace_ffx_fpe_config}}
+                {"primitive_transformation": {"crypto_deterministic_config": crypto_deterministic_config}}
             ]
         }
     }
@@ -66,13 +63,10 @@ def deidentify_aes_siv(project_id: str, text: str, key_name: str, wrapped_key_ba
 def main() -> None:
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
     assert project_id, "GOOGLE_CLOUD_PROJECT environment variable must be set."
-    # You'll need to provide your KMS key name and wrapped key
-    key_name = "projects/YOUR_PROJECT/locations/YOUR_LOCATION/keyRings/YOUR_KEYRING/cryptoKeys/YOUR_KEY"
-    wrapped_key = "YOUR_WRAPPED_KEY_BYTES"
 
-    # Example usage
-    deidentify_aes_siv(
-        project_id, "My name is John Doe and my email is john.doe@example.com.", key_name, wrapped_key
+    # Example usage with DLP-generated key
+    deidentify_with_generated_key(
+        project_id, "My name is John Doe and my email is john.doe@example.com."
     )
 
 
