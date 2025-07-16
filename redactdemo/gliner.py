@@ -1,7 +1,12 @@
+import argparse
+import hashlib
+import sys
+
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.predefined_recognizers import GLiNERRecognizer
-
+from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer.entities import OperatorConfig
 
 # Load a small spaCy model as we don't need spaCy's NER
 nlp_engine = NlpEngineProvider(
@@ -11,16 +16,14 @@ nlp_engine = NlpEngineProvider(
     }
 )
 
+# Create an anonymizer engine
+anonymizer = AnonymizerEngine()
+
 # Create an analyzer engine
 analyzer_engine = AnalyzerEngine()
 
 # Define and create the GLiNER recognizer
-entity_mapping = {
-    "person": "PERSON",
-    "name": "PERSON",
-    "organization": "ORGANIZATION",
-    "location": "LOCATION"
-}
+entity_mapping = {"person": "PERSON", "name": "PERSON", "organization": "ORGANIZATION", "location": "LOCATION"}
 
 gliner_recognizer = GLiNERRecognizer(
     model_name="urchade/gliner_multi_pii-v1",
@@ -36,9 +39,69 @@ analyzer_engine.registry.add_recognizer(gliner_recognizer)
 # Remove the spaCy recognizer to avoid NER coming from spaCy
 analyzer_engine.registry.remove_recognizer("SpacyRecognizer")
 
-# Analyze text
-results = analyzer_engine.analyze(
-    text="Hello, my name is Rafi Mor, I'm from Binyamina and I work at Microsoft. ", language="en"
-)
+print("GLiNER initialized successfully.", file=sys.stderr)
 
-print(results)
+
+def hash_pii(text, entity_type):
+    """Create a deterministic hash for PII values."""
+    # Create a deterministic hash of the text
+    hash_obj = hashlib.sha256(text.encode())
+    # Get first 8 chars of hash
+    short_hash = hash_obj.hexdigest()[:8]
+    # Return hash with entity type prefix
+    return f"[{entity_type}:{short_hash}]"
+
+
+def analyze_and_anonymize(text):
+    """Analyze text using GLiNER and anonymize detected entities."""
+    try:
+        # Analyze the text
+        analysis_results = analyzer_engine.analyze(text=text, language="en")
+
+        # Configure anonymization with hash operator
+        operators = {
+            "DEFAULT": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "DEFAULT")}),
+            "PERSON": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "PERSON")}),
+            "ORGANIZATION": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "ORG")}),
+            "LOCATION": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "LOC")}),
+        }
+
+        # Anonymize detected entities
+        result = anonymizer.anonymize(text=text, analyzer_results=analysis_results, operators=operators)
+
+        return result.text
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Redact sensitive information using GLiNER.")
+    parser.add_argument(
+        "--file",
+        "-f",
+        help="Path to a file containing text to redact. If not provided, a default example will be used.",
+    )
+    args = parser.parse_args()
+
+    # Default text if no file is provided
+    text = "Hello, my name is Rafi More, I'm from Binyamina and I work at Microsoft."
+
+    # If a file path is provided, read from the file
+    if args.file:
+        try:
+            with open(args.file) as f:
+                text = f.read()
+            print(f"Reading text from file: {args.file}", file=sys.stderr)
+        except OSError as e:
+            print(f"Error reading file: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Anonymize the text
+    anonymized_text = analyze_and_anonymize(text)
+    print(anonymized_text)
+
+
+if __name__ == "__main__":
+    main()
