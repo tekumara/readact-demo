@@ -53,7 +53,7 @@ def deidentify_with_generated_key(project_id: str, text: str) -> str:
     )
 
     # Output the deidentified text
-    #print(f"Original text: {text}")
+    # print(f"Original text: {text}")
     print(response.item.value)
     return response.item.value
 
