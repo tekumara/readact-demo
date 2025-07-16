@@ -1,49 +1,111 @@
 import argparse
 import os
 import sys
-import re
-from typing import Dict, List, Optional, Pattern, Tuple
+from typing import Dict, List, Optional
 
-# Simple patterns for PII detection instead of using full Presidio
-# which requires downloading language models
+import hashlib
+
+from presidio_analyzer import AnalyzerEngine, PatternRecognizer
+from presidio_analyzer.nlp_engine import NlpEngineProvider
+from presidio_analyzer.pattern import Pattern
+from presidio_anonymizer import AnonymizerEngine
+from presidio_anonymizer.entities import OperatorConfig
+
+# Setup Presidio NLP engine with spaCy
+nlp_engine_provider = NlpEngineProvider(nlp_configuration={"nlp_engine_name": "spacy", "models": [{"lang_code": "en", "model_name": "en_core_web_sm"}]})
+
+# Create analyzer with the NLP engine
+try:
+    # Try to load the NLP engine
+    nlp_engine = nlp_engine_provider.create_engine()
+    analyzer = AnalyzerEngine(nlp_engine=nlp_engine)
+    anonymizer = AnonymizerEngine()
+    print("Presidio NLP engine initialized successfully.", file=sys.stderr)
+except Exception as e:
+    print(f"Error: Could not initialize Presidio NLP engine: {e}", file=sys.stderr)
+    sys.exit(1)
 
 
-# Define patterns for common PII types
-PII_PATTERNS: Dict[str, Tuple[Pattern, str]] = {
-    "EMAIL": (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"), "[EMAIL]"),
-    "PHONE": (re.compile(r"\b(\+\d{1,2}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b"), "[PHONE]"),
-    "CREDIT_CARD": (re.compile(r"\b(?:\d{4}[ -]?){3}\d{4}\b"), "[CREDIT_CARD]"),
-    "SSN": (re.compile(r"\b\d{3}[- ]?\d{2}[- ]?\d{4}\b"), "[SSN]"),
-    "NAME": (re.compile(r"\b[A-Z][a-z]+ [A-Z][a-z]+\b"), "[PERSON]"),  # Simple name pattern
-    "ADDRESS": (re.compile(r"\b\d+\s[A-Za-z]+\s[A-Za-z]+\.?,?\s[A-Za-z]+,?\s[A-Z]{2}\s\d{5}\b"), "[ADDRESS]"),
-    "URL": (re.compile(r"https?://(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)"), "[URL]"),
-    "IP": (re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"), "[IP_ADDRESS]"),
+# Removed regex patterns in favor of using the Presidio NLP engine
+
+# Map from command-line entity types to Presidio entity types
+ENTITY_TYPE_MAPPING = {
+    "EMAIL": "EMAIL_ADDRESS",
+    "PHONE": "PHONE_NUMBER",
+    "CREDIT_CARD": "CREDIT_CARD",
+    "SSN": "US_SSN",
+    "NAME": "PERSON",
+    "ADDRESS": "ADDRESS",
+    "URL": "URL",
+    "IP": "IP_ADDRESS",
+    "DATE": "DATE_TIME",
+    "NRP": "NRP",  # National/religious/political identifiers
+    "LOCATION": "LOCATION",
+    "BANK": "IBAN_CODE",  # Bank account info
 }
 
 
 def analyze_and_redact(text: str, entity_types: Optional[List[str]] = None) -> str:
     """
-    Analyzes text for PII entities and redacts them using regex patterns.
+    Analyzes text for PII entities and redacts them using Presidio with SpaCy NLP engine.
     
     Args:
         text: The text to analyze and redact
-        entity_types: Optional list of entity types to look for. If None, will use all patterns.
+        entity_types: Optional list of entity types to look for. If None, will use all available.
         
     Returns:
         The redacted text with PII information replaced with tokens
     """
-    redacted_text = text
+    try:
+        # Convert entity types to Presidio format if specified
+        presidio_entities = None
+        if entity_types:
+            presidio_entities = [ENTITY_TYPE_MAPPING[e] for e in entity_types if e in ENTITY_TYPE_MAPPING]
+        
+        # Analyze the text with Presidio
+        analysis_results = analyzer.analyze(
+            text=text,
+            entities=presidio_entities,
+            language="en"
+        )
+        
+        # Function to create deterministic hash for PII values
+        def hash_pii(text, entity_type):
+            # Create a deterministic hash of the text
+            hash_obj = hashlib.sha256(text.encode())
+            # Get first 8 chars of hash
+            short_hash = hash_obj.hexdigest()[:8]
+            # Return hash with entity type prefix
+            return f"[{entity_type}:{short_hash}]"
+            
+        # Configure anonymization with hash operator
+        operators = {"DEFAULT": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "ENTITY")}),
+                    "PERSON": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "PERSON")}),
+                    "EMAIL_ADDRESS": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "EMAIL")}),
+                    "PHONE_NUMBER": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "PHONE")}),
+                    "CREDIT_CARD": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "CC")}),
+                    "US_SSN": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "SSN")}),
+                    "ADDRESS": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "ADDR")}),
+                    "URL": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "URL")}),
+                    "IP_ADDRESS": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "IP")}),
+                    "DATE_TIME": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "DATE")}),
+                    "NRP": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "NRP")}),
+                    "LOCATION": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "LOC")}),
+                    "IBAN_CODE": OperatorConfig("custom", {"lambda": lambda x: hash_pii(x, "BANK")}),
+                   }
+        
+        # Anonymize detected entities
+        result = anonymizer.anonymize(
+            text=text,
+            analyzer_results=analysis_results,
+            operators=operators
+        )
+        
+        return result.text
     
-    # Filter patterns based on entity_types if provided
-    patterns_to_use = PII_PATTERNS
-    if entity_types:
-        patterns_to_use = {k: v for k, v in PII_PATTERNS.items() if k in entity_types}
-    
-    # Apply each pattern and replace matches
-    for entity_type, (pattern, replacement) in patterns_to_use.items():
-        redacted_text = pattern.sub(replacement, redacted_text)
-    
-    return redacted_text
+    except Exception as e:
+        print(f"Error using Presidio: {e}", file=sys.stderr)
+        raise
 
 
 def main() -> None:
@@ -57,7 +119,7 @@ def main() -> None:
         "--entities",
         "-e",
         nargs="+",
-        choices=["EMAIL", "PHONE", "CREDIT_CARD", "SSN", "NAME", "ADDRESS", "URL", "IP"],
+        choices=["EMAIL", "PHONE", "CREDIT_CARD", "SSN", "NAME", "ADDRESS", "URL", "IP", "DATE", "NRP", "LOCATION", "BANK"],
         help="Specific entity types to detect, space separated (e.g., NAME EMAIL)"
     )
     args = parser.parse_args()
