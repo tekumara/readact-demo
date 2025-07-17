@@ -22,12 +22,10 @@ anonymizer = AnonymizerEngine()
 # Create an analyzer engine
 analyzer_engine = AnalyzerEngine()
 
-# Define and create the GLiNER recognizer
-entity_mapping = {"person": "PERSON", "name": "PERSON", "organization": "ORGANIZATION", "location": "LOCATION"}
 
 gliner_recognizer = GLiNERRecognizer(
     model_name="urchade/gliner_multi_pii-v1",
-    entity_mapping=entity_mapping,
+    supported_entities=["PERSON", "ORGANIZATION", "LOCATION"],
     flat_ner=False,
     multi_label=True,
     map_location="cpu",
