@@ -1,11 +1,13 @@
 import argparse
+import base64
 import os
+import secrets
 import sys
 
 import google.cloud.dlp_v2
 
 
-def deidentify_with_generated_key(project_id: str, text: str) -> str:
+def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | None = None) -> str:
     dlp = google.cloud.dlp_v2.DlpServiceClient()
     parent = f"projects/{project_id}/locations/global"
 
@@ -24,18 +26,17 @@ def deidentify_with_generated_key(project_id: str, text: str) -> str:
         "info_types": info_types,
     }
 
-    # Configure deterministic encryption transformation with DLP-generated key
-    crypto_deterministic_config = {
-        "crypto_key": {"transient": {"name": "dlp-generated-key"}},
-        # prefix for replacement tokens
-        "surrogate_info_type": {"name": "TOKEN"},
-    }
+    # Configure cryptographic hash transformation with unwrapped key if provided, otherwise DLP-generated key
+    if key_bytes:
+        # Use unwrapped key (must be 32 or 64 bytes)
+        crypto_hash_config = {"crypto_key": {"unwrapped": {"key": key_bytes}}}
+    else:
+        # Use transient key
+        crypto_hash_config = {"crypto_key": {"transient": {"name": "dlp-generated-key"}}}
 
     deidentify_config = {
         "info_type_transformations": {
-            "transformations": [
-                {"primitive_transformation": {"crypto_deterministic_config": crypto_deterministic_config}}
-            ]
+            "transformations": [{"primitive_transformation": {"crypto_hash_config": crypto_hash_config}}]
         }
     }
 
@@ -65,7 +66,27 @@ def main() -> None:
         "-f",
         help="Path to a file containing text to deidentify. If not provided, a default example will be used.",
     )
+    parser.add_argument(
+        "--key",
+        "-k",
+        help="Optional: Base64-encoded 32 or 64 byte key for hashing. If not provided, a transient key will be used.",
+    )
+    parser.add_argument(
+        "--generate-key",
+        "-g",
+        action="store_true",
+        help="Generate and print a random 32-byte key encoded as base64.",
+    )
     args = parser.parse_args()
+
+    # Generate and print a random key if requested
+    if args.generate_key:
+        key = secrets.token_bytes(32)  # Generate a 32-byte random key
+        encoded_key = base64.b64encode(key).decode("ascii")
+        print(f"Generated key (base64): {encoded_key}", file=sys.stderr)
+        if not args.file and not args.key:
+            # If only generating a key and not processing text, exit
+            return
 
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT")
     assert project_id, "GOOGLE_CLOUD_PROJECT environment variable must be set."
@@ -83,8 +104,20 @@ def main() -> None:
             print(f"Error reading file: {e}", file=sys.stderr)
             exit(1)
 
+    # Decode the key if provided
+    key_bytes = None
+    if args.key:
+        try:
+            key_bytes = base64.b64decode(args.key)
+            if len(key_bytes) not in (32, 64):
+                print(f"Error: Key must be 32 or 64 bytes (got {len(key_bytes)})", file=sys.stderr)
+                exit(1)
+        except Exception as e:
+            print(f"Error decoding key: {e}", file=sys.stderr)
+            exit(1)
+
     # Deidentify the text
-    deidentify_with_generated_key(project_id, text)
+    deidentify_with_crypto_hash(project_id, text, key_bytes)
 
 
 if __name__ == "__main__":
