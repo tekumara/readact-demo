@@ -12,6 +12,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
     parent = f"projects/{project_id}/locations/global"
 
     # Specify the types of info to detect and transform
+    # https://cloud.google.com/sensitive-data-protection/docs/infotypes-reference
     info_types = [
         {"name": "PERSON_NAME"},
         {"name": "EMAIL_ADDRESS"},
@@ -19,6 +20,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
         {"name": "CREDIT_CARD_NUMBER"},
         {"name": "ORGANIZATION_NAME"},
         {"name": "FINANCIAL_ACCOUNT_NUMBER"},
+        {"name": "STREET_ADDRESS"},
     ]
 
     # Configuration for the DLP API
@@ -29,6 +31,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
     # Configure cryptographic hash transformation with unwrapped key if provided, otherwise DLP-generated key
     if key_bytes:
         # Use unwrapped key (must be 32 or 64 bytes)
+        # https://cloud.google.com/sensitive-data-protection/docs/reference/rest/v2/projects.deidentifyTemplates#cryptohashconfig
         crypto_hash_config = {"crypto_key": {"unwrapped": {"key": key_bytes}}}
     else:
         # Use transient key
@@ -53,9 +56,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
         }
     )
 
-    # Output the deidentified text
-    # print(f"Original text: {text}")
-    print(response.item.value)
+    # Return the deidentified text
     return response.item.value
 
 
@@ -76,6 +77,12 @@ def main() -> None:
         "-g",
         action="store_true",
         help="Generate and print a random 32-byte key encoded as base64.",
+    )
+    parser.add_argument(
+        "--store",
+        "-s",
+        action="store_true",
+        help="Store the redacted text to a file instead of printing to stdout. The output file will have the same name as the input file with a .redact suffix.",
     )
     args = parser.parse_args()
 
@@ -117,7 +124,20 @@ def main() -> None:
             exit(1)
 
     # Deidentify the text
-    deidentify_with_crypto_hash(project_id, text, key_bytes)
+    redacted_text = deidentify_with_crypto_hash(project_id, text, key_bytes)
+
+    # If --store is specified and we have an input file, write to output file
+    if args.store and args.file:
+        output_file = f"{args.file}.redact"
+        try:
+            with open(output_file, 'w') as f:
+                f.write(redacted_text)
+            print(f"Redacted text written to: {output_file}", file=sys.stderr)
+        except OSError as e:
+            print(f"Error writing to file: {e}", file=sys.stderr)
+    else:
+        # Print to stdout if not storing to file
+        print(redacted_text)
 
 
 if __name__ == "__main__":
