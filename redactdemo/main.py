@@ -21,6 +21,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
         {"name": "ORGANIZATION_NAME"},
         {"name": "FINANCIAL_ACCOUNT_NUMBER"},
         {"name": "STREET_ADDRESS"},
+        {"name": "LOCATION"}
     ]
 
     # Configuration for the DLP API
@@ -84,6 +85,12 @@ def main() -> None:
         action="store_true",
         help="Store the redacted text to a file instead of printing to stdout. The output file will have the same name as the input file with a .redact suffix.",
     )
+    parser.add_argument(
+        "--combined",
+        "-c",
+        action="store_true",
+        help="Write both source and redacted content to the output file, with source wrapped in <source></source> tags and redacted content wrapped in <redacted></redacted> tags.",
+    )
     args = parser.parse_args()
 
     # Generate and print a random key if requested
@@ -126,18 +133,29 @@ def main() -> None:
     # Deidentify the text
     redacted_text = deidentify_with_crypto_hash(project_id, text, key_bytes)
 
-    # If --store is specified and we have an input file, write to output file
+    # If --store is specified and we have an input file, write to output file(s)
     if args.store and args.file:
         output_file = f"{args.file}.redact"
         try:
-            with open(output_file, 'w') as f:
+            # Always write the redacted text to the standard .redact file
+            with open(output_file, "w") as f:
                 f.write(redacted_text)
             print(f"Redacted text written to: {output_file}", file=sys.stderr)
+
+            # If combined is specified, also write to a .redact.combined file
+            if args.combined:
+                combined_output_file = f"{args.file}.redact.combined"
+                with open(combined_output_file, "w") as cf:
+                    cf.write(f"<source>{text}</source>\n<redacted>{redacted_text}</redacted>")
+                print(f"Combined text written to: {combined_output_file}", file=sys.stderr)
         except OSError as e:
             print(f"Error writing to file: {e}", file=sys.stderr)
     else:
         # Print to stdout if not storing to file
-        print(redacted_text)
+        if args.combined:
+            print(f"<source>{text}</source>\n<redacted>{redacted_text}</redacted>")
+        else:
+            print(redacted_text)
 
 
 if __name__ == "__main__":
