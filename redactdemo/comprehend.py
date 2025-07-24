@@ -37,13 +37,16 @@ def main() -> None:
         "--store",
         "-s",
         action="store_true",
-        help="Store the redacted text to a file instead of printing to stdout. The output file will have the same name as the input file with a .redactc suffix.",
+        help="Store the redacted text to a file instead of printing to stdout. "
+        "The output file will have the same name as the input file with a .redactc suffix.",
     )
     parser.add_argument(
         "--combined",
         "-c",
         action="store_true",
-        help="Write both source and redacted content to the output file, with source wrapped in <source></source> tags and redacted content wrapped in <redacted></redacted> tags.",
+        help="Write both source and redacted content to the output file, "
+        "with source wrapped in <source></source> tags and redacted content wrapped in "
+        "<redacted></redacted> tags.",
     )
     args = parser.parse_args()
 

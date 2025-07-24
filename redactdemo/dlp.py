@@ -21,7 +21,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
         {"name": "ORGANIZATION_NAME"},
         {"name": "FINANCIAL_ACCOUNT_NUMBER"},
         {"name": "STREET_ADDRESS"},
-        {"name": "LOCATION"},
+        # {"name": "LOCATION"},
     ]
 
     # Configuration for the DLP API
@@ -83,13 +83,16 @@ def main() -> None:
         "--store",
         "-s",
         action="store_true",
-        help="Store the redacted text to a file instead of printing to stdout. The output file will have the same name as the input file with a .redact suffix.",
+        help="Store the redacted text to a file instead of printing to stdout. "
+        "The output file will have the same name as the input file with a .redact suffix.",
     )
     parser.add_argument(
         "--combined",
         "-c",
         action="store_true",
-        help="Write both source and redacted content to the output file, with source wrapped in <source></source> tags and redacted content wrapped in <redacted></redacted> tags.",
+        help="Write both source and redacted content to the output file, "
+        "with source wrapped in <source></source> tags and redacted content wrapped in "
+        "<redacted></redacted> tags.",
     )
     args = parser.parse_args()
 

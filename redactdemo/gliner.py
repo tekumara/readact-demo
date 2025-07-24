@@ -1,12 +1,14 @@
 import argparse
 import hashlib
 import sys
+from typing import cast
 
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.predefined_recognizers import GLiNERRecognizer
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
+from presidio_anonymizer.entities.engine.recognizer_result import RecognizerResult as AnonymizerRecognizerResult
 
 # Load a small spaCy model as we don't need spaCy's NER
 nlp_engine = NlpEngineProvider(
@@ -40,7 +42,7 @@ analyzer_engine.registry.remove_recognizer("SpacyRecognizer")
 print("GLiNER initialized successfully.", file=sys.stderr)
 
 
-def hash_pii(text, entity_type):
+def hash_pii(text: str, entity_type: str) -> str:
     """Create a deterministic hash for PII values."""
     # Create a deterministic hash of the text
     hash_obj = hashlib.sha256(text.encode())
@@ -50,7 +52,7 @@ def hash_pii(text, entity_type):
     return f"[{entity_type}:{short_hash}]"
 
 
-def analyze_and_anonymize(text):
+def analyze_and_anonymize(text: str) -> str:
     """Analyze text using GLiNER and anonymize detected entities."""
     try:
         # Analyze the text
@@ -65,7 +67,10 @@ def analyze_and_anonymize(text):
         }
 
         # Anonymize detected entities
-        result = anonymizer.anonymize(text=text, analyzer_results=analysis_results, operators=operators)
+        # Cast to the anonymizer's RecognizerResult type to fix type compatibility issues
+        # This cast is safe because the structure is compatible even though the types are from different modules
+        anonymizer_results = cast(list[AnonymizerRecognizerResult], analysis_results)
+        result = anonymizer.anonymize(text=text, analyzer_results=anonymizer_results, operators=operators)
 
         return result.text
 
@@ -74,7 +79,7 @@ def analyze_and_anonymize(text):
         raise
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Redact sensitive information using GLiNER.")
     parser.add_argument(
         "--file",

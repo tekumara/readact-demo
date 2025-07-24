@@ -1,11 +1,13 @@
 import argparse
 import hashlib
 import sys
+from typing import cast
 
 from presidio_analyzer import AnalyzerEngine
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
+from presidio_anonymizer.entities.engine.recognizer_result import RecognizerResult as AnonymizerRecognizerResult
 
 # Setup Presidio NLP engine with spaCy
 nlp_engine_provider = NlpEngineProvider(
@@ -62,7 +64,7 @@ def analyze_and_redact(text: str, entity_types: list[str] | None = None) -> str:
         analysis_results = analyzer.analyze(text=text, entities=presidio_entities, language="en")
 
         # Function to create deterministic hash for PII values
-        def hash_pii(text, entity_type):
+        def hash_pii(text: str, entity_type: str) -> str:
             # Create a deterministic hash of the text
             hash_obj = hashlib.sha256(text.encode())
             # Get first 8 chars of hash
@@ -86,7 +88,10 @@ def analyze_and_redact(text: str, entity_types: list[str] | None = None) -> str:
         }
 
         # Anonymize detected entities
-        result = anonymizer.anonymize(text=text, analyzer_results=analysis_results, operators=operators)
+        # Cast to the anonymizer's RecognizerResult type to fix type compatibility issues
+        # This cast is safe because the structure is compatible even though the types are from different modules
+        anonymizer_results = cast(list[AnonymizerRecognizerResult], analysis_results)
+        result = anonymizer.anonymize(text=text, analyzer_results=anonymizer_results, operators=operators)
 
         return result.text
 
