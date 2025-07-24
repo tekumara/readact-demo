@@ -8,8 +8,13 @@ import google.cloud.dlp_v2
 
 
 def deidentify_with_crypto_hash(
-    project_id: str, text: str, key_bytes: bytes | None = None, hotwords: list[str] | None = None
+    project_id: str,
+    text: str,
+    key_bytes: bytes | None = None,
+    hotwords: list[str] | None = None,
+    exclusions: list[str] | None = None,
 ) -> str:
+    # NB: there is also a DlpServiceAsyncClient
     dlp = google.cloud.dlp_v2.DlpServiceClient()
     parent = f"projects/{project_id}/locations/global"
 
@@ -25,7 +30,12 @@ def deidentify_with_crypto_hash(
         {"name": "GEOGRAPHIC_DATA"},
     ]
 
-    # Add hotword rule(s) to inspect_config
+    # Setup inspect_config with rules
+    # TODO: use google.cloud.dlp_v2.InspectConfig
+    inspect_config = {"info_types": info_types}
+    rules = []
+
+    # Add hotword rule if hotwords provided
     if hotwords:
         pattern = "|".join(hotwords)
         hotword_regex = f"(?i)({pattern})(?-i)"
@@ -34,12 +44,22 @@ def deidentify_with_crypto_hash(
             "likelihood_adjustment": {"fixed_likelihood": google.cloud.dlp_v2.Likelihood.VERY_UNLIKELY},
             "proximity": {"window_before": 1},
         }
-        inspect_config = {
-            "info_types": info_types,
-            "rule_set": [{"info_types": info_types, "rules": [{"hotword_rule": hotword_rule}]}],
+        rules.append({"hotword_rule": hotword_rule})
+
+    # Add exclusion rule if exclusions provided
+    if exclusions:
+        pattern = "|".join(exclusions)
+        exclusion_regex = f"(?i)({pattern})(?-i)"
+        exclusion_rule = {
+            "exclude_info_types": {"info_types": info_types},
+            "matching_type": google.cloud.dlp_v2.MatchingType.MATCHING_TYPE_FULL_MATCH,
+            "regex": {"pattern": exclusion_regex},
         }
-    else:
-        inspect_config = {"info_types": info_types}
+        rules.append({"exclusion_rule": exclusion_rule})
+
+    # Add rules to inspect_config if any exist
+    if rules:
+        inspect_config["rule_set"] = [{"info_types": info_types, "rules": rules}]  # type: ignore
 
     # Configure cryptographic hash transformation with unwrapped key if provided, otherwise DLP-generated key
     if key_bytes:
@@ -60,6 +80,7 @@ def deidentify_with_crypto_hash(
     item = {"value": text}
 
     # Call the DLP API
+    # https://cloud.google.com/python/docs/reference/dlp/latest/google.cloud.dlp_v2.services.dlp_service.DlpServiceAsyncClient#google_cloud_dlp_v2_services_dlp_service_DlpServiceAsyncClient_deidentify_content
     response = dlp.deidentify_content(
         request={
             "parent": parent,
@@ -112,6 +133,12 @@ def main() -> None:
         default=["foo", "bar"],
         help="List of hotwords that indicate no PII nearby (default: foo bar)",
     )
+    parser.add_argument(
+        "--exclusions",
+        "-x",
+        nargs="*",
+        help="List of text patterns to exclude from detection",
+    )
     args = parser.parse_args()
 
     # Generate and print a random key if requested
@@ -152,7 +179,7 @@ def main() -> None:
             exit(1)
 
     # Deidentify the text
-    redacted_text = deidentify_with_crypto_hash(project_id, text, key_bytes, args.hotwords)
+    redacted_text = deidentify_with_crypto_hash(project_id, text, key_bytes, args.hotwords, args.exclusions)
 
     # If --store is specified and we have an input file, write to output file(s)
     if args.store and args.file:
