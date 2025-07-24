@@ -7,7 +7,9 @@ import sys
 import google.cloud.dlp_v2
 
 
-def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | None = None) -> str:
+def deidentify_with_crypto_hash(
+    project_id: str, text: str, key_bytes: bytes | None = None, hotwords: list[str] | None = None
+) -> str:
     dlp = google.cloud.dlp_v2.DlpServiceClient()
     parent = f"projects/{project_id}/locations/global"
 
@@ -23,10 +25,21 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
         {"name": "GEOGRAPHIC_DATA"},
     ]
 
-    # Configuration for the DLP API
-    inspect_config = {
-        "info_types": info_types,
-    }
+    # Add hotword rule(s) to inspect_config
+    if hotwords:
+        pattern = "|".join(hotwords)
+        hotword_regex = f"(?i)({pattern})(?-i)"
+        hotword_rule = {
+            "hotword_regex": {"pattern": hotword_regex},
+            "likelihood_adjustment": {"fixed_likelihood": google.cloud.dlp_v2.Likelihood.VERY_UNLIKELY},
+            "proximity": {"window_before": 1},
+        }
+        inspect_config = {
+            "info_types": info_types,
+            "rule_set": [{"info_types": info_types, "rules": [{"hotword_rule": hotword_rule}]}],
+        }
+    else:
+        inspect_config = {"info_types": info_types}
 
     # Configure cryptographic hash transformation with unwrapped key if provided, otherwise DLP-generated key
     if key_bytes:
@@ -93,6 +106,12 @@ def main() -> None:
         "with source wrapped in <source></source> tags and redacted content wrapped in "
         "<redacted></redacted> tags.",
     )
+    parser.add_argument(
+        "--hotwords",
+        nargs="*",
+        default=["foo", "bar"],
+        help="List of hotwords that indicate no PII nearby (default: foo bar)",
+    )
     args = parser.parse_args()
 
     # Generate and print a random key if requested
@@ -133,7 +152,7 @@ def main() -> None:
             exit(1)
 
     # Deidentify the text
-    redacted_text = deidentify_with_crypto_hash(project_id, text, key_bytes)
+    redacted_text = deidentify_with_crypto_hash(project_id, text, key_bytes, args.hotwords)
 
     # If --store is specified and we have an input file, write to output file(s)
     if args.store and args.file:
