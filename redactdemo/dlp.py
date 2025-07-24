@@ -21,7 +21,7 @@ def deidentify_with_crypto_hash(project_id: str, text: str, key_bytes: bytes | N
         {"name": "ORGANIZATION_NAME"},
         {"name": "FINANCIAL_ACCOUNT_NUMBER"},
         {"name": "STREET_ADDRESS"},
-        {"name": "LOCATION"}
+        {"name": "LOCATION"},
     ]
 
     # Configuration for the DLP API

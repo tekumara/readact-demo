@@ -3,32 +3,28 @@ import sys
 
 import boto3
 
-comprehend = boto3.client('comprehend')
-
+comprehend = boto3.client("comprehend")
 
 
 def remove_pii(text: str) -> str:
     import base64
     import hashlib
-    response = comprehend.detect_pii_entities(
-        Text=text,
-        LanguageCode='en'
-    )
-    pii_entities = response['Entities']
+
+    response = comprehend.detect_pii_entities(Text=text, LanguageCode="en")
+    pii_entities = response["Entities"]
     # To avoid offset shifting, replace entities from end to start
     redacted_text = text
-    entities_sorted = sorted(pii_entities, key=lambda e: e['BeginOffset'], reverse=True)
+    entities_sorted = sorted(pii_entities, key=lambda e: e["BeginOffset"], reverse=True)
     for entity in entities_sorted:
-        start_offset = entity['BeginOffset']
-        end_offset = entity['EndOffset']
+        start_offset = entity["BeginOffset"]
+        end_offset = entity["EndOffset"]
         text_to_hash = redacted_text[start_offset:end_offset]
         digest = hashlib.sha256(text_to_hash.encode()).digest()
         hashed = base64.urlsafe_b64encode(digest).decode()
-        redacted_text = (
-            redacted_text[:start_offset] + hashed + redacted_text[end_offset:]
-        )
+        redacted_text = redacted_text[:start_offset] + hashed + redacted_text[end_offset:]
 
     return redacted_text
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deidentify sensitive information in text.")
@@ -50,8 +46,6 @@ def main() -> None:
         help="Write both source and redacted content to the output file, with source wrapped in <source></source> tags and redacted content wrapped in <redacted></redacted> tags.",
     )
     args = parser.parse_args()
-
-
 
     # Default text if no file is provided
     text = "My name is John Doe and my email is john.doe@example.com."
@@ -92,6 +86,7 @@ def main() -> None:
             print(f"<source>{text}</source>\n<redacted>{redacted_text}</redacted>")
         else:
             print(redacted_text)
+
 
 if __name__ == "__main__":
     main()
