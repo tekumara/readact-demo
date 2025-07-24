@@ -5,7 +5,10 @@ import boto3
 
 comprehend = boto3.client('comprehend')
 
+
+
 def remove_pii(text: str) -> str:
+    import base64
     import hashlib
     response = comprehend.detect_pii_entities(
         Text=text,
@@ -19,7 +22,8 @@ def remove_pii(text: str) -> str:
         start_offset = entity['BeginOffset']
         end_offset = entity['EndOffset']
         text_to_hash = redacted_text[start_offset:end_offset]
-        hashed = hashlib.sha256(text_to_hash.encode()).hexdigest()[:10]  # Shorten hash for readability
+        digest = hashlib.sha256(text_to_hash.encode()).digest()
+        hashed = base64.urlsafe_b64encode(digest).decode()
         redacted_text = (
             redacted_text[:start_offset] + hashed + redacted_text[end_offset:]
         )
@@ -88,7 +92,6 @@ def main() -> None:
             print(f"<source>{text}</source>\n<redacted>{redacted_text}</redacted>")
         else:
             print(redacted_text)
-
 
 if __name__ == "__main__":
     main()
