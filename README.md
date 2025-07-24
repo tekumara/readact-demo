@@ -2,7 +2,12 @@
 
 [![ci](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
-PII redaction demo
+PII redaction demo (vibe coded) for comparing different methods.
+
+- [google dlp](redactdemo/dlp.py)
+- [amazon comprehend](redactdemo/comprehend.py)
+- [presidio](redactdemo/presidio.py)
+- [presidio gliner](redactdemo/gliner.py)
 
 ## Contributing
 
